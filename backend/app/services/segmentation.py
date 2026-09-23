@@ -18,8 +18,11 @@ def _split_long_scene(
     clips = []
     current_start = start
 
-    while end - current_start > MAX_CLIP_DURATION:
-        current_end = current_start + MAX_CLIP_DURATION
+    while current_start < end:
+        current_end = min(
+            current_start + MAX_CLIP_DURATION,
+            end,
+        )
 
         clips.append(
             (
@@ -29,14 +32,6 @@ def _split_long_scene(
         )
 
         current_start = current_end
-
-    if current_start < end:
-        clips.append(
-            (
-                current_start,
-                end,
-            )
-        )
 
     return clips
 
@@ -51,6 +46,9 @@ def _merge_short_clips(
 
     for start, end in scenes:
         duration = end - start
+
+        if duration <= 0:
+            continue
 
         if (
             duration < MIN_CLIP_DURATION
@@ -89,6 +87,12 @@ def detect_scenes(
 ) -> list[dict]:
     video = open_video(file_path)
 
+    # Capture the real duration before scene detection.
+    video_duration = video.duration.get_seconds()
+
+    if video_duration <= 0:
+        return []
+
     scene_manager = SceneManager()
 
     scene_manager.add_detector(
@@ -100,42 +104,49 @@ def detect_scenes(
     scene_manager.detect_scenes(
         video,
         frame_skip=2,
-        show_progress=True,
+        show_progress=False,
     )
 
-    # Important:
-    # If no cuts are detected, treat the full video
-    # as one scene so it can still be split below.
     scene_list = scene_manager.get_scene_list(
         start_in_scene=True
     )
 
-    if not scene_list:
-        duration = video.duration.get_seconds()
+    raw_scenes = []
 
-        if duration <= 0:
-            return []
+    for start, end in scene_list:
+        start_seconds = start.get_seconds()
+        end_seconds = end.get_seconds()
 
-        raw_scenes = [
-            (
-                0.0,
-                duration,
-            )
-        ]
-
-    else:
-        raw_scenes = []
-
-        for start, end in scene_list:
-            start_seconds = start.get_seconds()
-            end_seconds = end.get_seconds()
-
+        if end_seconds > start_seconds:
             raw_scenes.append(
                 (
                     start_seconds,
                     end_seconds,
                 )
             )
+
+    # SceneDetect can occasionally return only a
+    # tiny first scene for some codecs/videos.
+    # If its coverage is clearly invalid, treat
+    # the entire video as one source scene.
+    if not raw_scenes:
+        raw_scenes = [
+            (
+                0.0,
+                video_duration,
+            )
+        ]
+
+    else:
+        detected_end = raw_scenes[-1][1]
+
+        if detected_end < video_duration * 0.90:
+            raw_scenes = [
+                (
+                    0.0,
+                    video_duration,
+                )
+            ]
 
     normalized_scenes = []
 
@@ -160,14 +171,8 @@ def detect_scenes(
         clips.append(
             {
                 "clip_id": index,
-                "start": round(
-                    start,
-                    2,
-                ),
-                "end": round(
-                    end,
-                    2,
-                ),
+                "start": round(start, 2),
+                "end": round(end, 2),
                 "duration": round(
                     end - start,
                     2,
