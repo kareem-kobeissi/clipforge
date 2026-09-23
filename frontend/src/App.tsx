@@ -28,6 +28,13 @@ type Clip = {
   generating?: boolean;
 };
 
+const API_BASE = import.meta.env.DEV
+  ? "http://127.0.0.1:8000"
+  : "";
+
+const apiUrl = (path: string) =>
+  `${API_BASE}${path}`;
+
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -39,7 +46,8 @@ function App() {
 
   const [loading, setLoading] = useState(false);
   const [segmenting, setSegmenting] = useState(false);
-  const [exportingAll, setExportingAll] = useState(false);
+  const [exportingAll, setExportingAll] =
+    useState(false);
 
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] =
@@ -74,7 +82,7 @@ function App() {
       formData.append("file", file);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/api/upload",
+        apiUrl("/api/upload"),
         {
           method: "POST",
           body: formData,
@@ -90,6 +98,7 @@ function App() {
       }
 
       setVideo(data);
+
       setSuccessMessage(
         "Video uploaded and validated successfully."
       );
@@ -116,7 +125,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/youtube",
+        apiUrl("/api/youtube"),
         {
           method: "POST",
           headers: {
@@ -138,6 +147,7 @@ function App() {
       }
 
       setVideo(data);
+
       setSuccessMessage(
         "YouTube video imported successfully."
       );
@@ -160,7 +170,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/segment",
+        apiUrl("/api/segment"),
         {
           method: "POST",
           headers: {
@@ -241,7 +251,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/clips/update",
+        apiUrl("/api/clips/update"),
         {
           method: "POST",
           headers: {
@@ -309,7 +319,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/api/clips/vertical",
+        apiUrl("/api/clips/vertical"),
         {
           method: "POST",
           headers: {
@@ -374,145 +384,152 @@ function App() {
     filename: string
   ) => {
     window.open(
-      `http://127.0.0.1:8000/api/export/${filename}`,
+      apiUrl(`/api/export/${filename}`),
       "_blank"
     );
   };
 
   const exportAll = async () => {
-  if (!video || clips.length === 0) return;
+    if (!video || clips.length === 0) {
+      return;
+    }
 
-  setExportingAll(true);
-  clearMessages();
+    setExportingAll(true);
+    clearMessages();
 
-  try {
-    const videoId =
-      video.video_id ||
-      video.stored_filename.split(".")[0];
+    try {
+      const videoId =
+        video.video_id ||
+        video.stored_filename.split(".")[0];
 
-    /*
-      Generate every clip that has not already
-      been converted to vertical.
-    */
-    for (const clip of clips) {
-      if (clip.output_filename) {
-        continue;
-      }
-
-      setClips((currentClips) =>
-        currentClips.map((item) =>
-          item.clip_id === clip.clip_id
-            ? {
-                ...item,
-                generating: true,
-              }
-            : item
-        )
-      );
-
-      const verticalResponse = await fetch(
-        "http://127.0.0.1:8000/api/clips/vertical",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            stored_filename:
-              video.stored_filename,
-            clip_id: clip.clip_id,
-            start: clip.start,
-            end: clip.end,
-          }),
+      for (const clip of clips) {
+        if (clip.output_filename) {
+          continue;
         }
-      );
 
-      const verticalData =
-        await verticalResponse.json();
+        setClips((currentClips) =>
+          currentClips.map((item) =>
+            item.clip_id === clip.clip_id
+              ? {
+                  ...item,
+                  generating: true,
+                }
+              : item
+          )
+        );
 
-      if (!verticalResponse.ok) {
+        const verticalResponse =
+          await fetch(
+            apiUrl("/api/clips/vertical"),
+            {
+              method: "POST",
+              headers: {
+                "Content-Type":
+                  "application/json",
+              },
+              body: JSON.stringify({
+                stored_filename:
+                  video.stored_filename,
+                clip_id: clip.clip_id,
+                start: clip.start,
+                end: clip.end,
+              }),
+            }
+          );
+
+        const verticalData =
+          await verticalResponse.json();
+
+        if (!verticalResponse.ok) {
+          setClips((currentClips) =>
+            currentClips.map((item) =>
+              item.clip_id === clip.clip_id
+                ? {
+                    ...item,
+                    generating: false,
+                  }
+                : item
+            )
+          );
+
+          throw new Error(
+            verticalData.detail ||
+              `Could not generate Clip ${clip.clip_id}.`
+          );
+        }
+
         setClips((currentClips) =>
           currentClips.map((item) =>
             item.clip_id === clip.clip_id
               ? {
                   ...item,
                   generating: false,
+                  output_filename:
+                    verticalData.output_filename,
                 }
               : item
           )
         );
-
-        throw new Error(
-          verticalData.detail ||
-            `Could not generate Clip ${clip.clip_id}.`
-        );
       }
 
-      setClips((currentClips) =>
-        currentClips.map((item) =>
-          item.clip_id === clip.clip_id
-            ? {
-                ...item,
-                generating: false,
-                output_filename:
-                  verticalData.output_filename,
-              }
-            : item
+      const response = await fetch(
+        apiUrl(
+          `/api/export-all/${videoId}`
         )
       );
-    }
 
-    /*
-      After every clip exists, request the ZIP.
-    */
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/export-all/${videoId}`
-    );
+      if (!response.ok) {
+        let message =
+          "Could not export all clips.";
 
-    if (!response.ok) {
-      const data = await response.json();
+        try {
+          const data =
+            await response.json();
 
-      throw new Error(
-        data.detail ||
-          "Could not export all clips."
+          message =
+            data.detail || message;
+        } catch {
+          message =
+            "Could not export all clips.";
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+
+      const url =
+        window.URL.createObjectURL(blob);
+
+      const link =
+        document.createElement("a");
+
+      link.href = url;
+
+      link.download =
+        `${videoId}_clips.zip`;
+
+      document.body.appendChild(link);
+
+      link.click();
+
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      setSuccessMessage(
+        `All ${clips.length} clips were generated and exported successfully.`
       );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not export all clips."
+      );
+    } finally {
+      setExportingAll(false);
     }
-
-    const blob = await response.blob();
-
-    const url =
-      window.URL.createObjectURL(blob);
-
-    const link =
-      document.createElement("a");
-
-    link.href = url;
-    link.download =
-      `${videoId}_clips.zip`;
-
-    document.body.appendChild(link);
-
-    link.click();
-
-    link.remove();
-
-    window.URL.revokeObjectURL(url);
-
-    setSuccessMessage(
-      `All ${clips.length} clips were generated and exported successfully.`
-    );
-  } catch (err) {
-    setError(
-      err instanceof Error
-        ? err.message
-        : "Could not export all clips."
-    );
-  } finally {
-    setExportingAll(false);
-  }
-};
-
-
+  };
 
   return (
     <div className="page-shell">
@@ -527,6 +544,7 @@ function App() {
               <div className="brand-name">
                 ClipForge
               </div>
+
               <div className="brand-subtitle">
                 AI Video Studio
               </div>
@@ -535,7 +553,7 @@ function App() {
 
           <div className="topbar-badge">
             <span className="status-dot" />
-            Local processing
+            Video processing
           </div>
         </div>
       </header>
@@ -563,19 +581,23 @@ function App() {
             <span>16:9 → 9:16</span>
             <span>Subject tracking</span>
             <span>Smart segmentation</span>
-            <span>Local processing</span>
+            <span>Video processing</span>
           </div>
         </section>
 
         <section className="workspace-card import-card">
           <div className="card-heading">
-            <div className="step-number">01</div>
+            <div className="step-number">
+              01
+            </div>
 
             <div>
               <p className="section-label">
                 SOURCE
               </p>
+
               <h2>Import your video</h2>
+
               <p>
                 Upload a horizontal video or
                 paste a YouTube link.
@@ -636,7 +658,7 @@ function App() {
 
             <div className="source-panel">
               <div className="source-icon">
-                ▶
+                ▶️
               </div>
 
               <h3>YouTube URL</h3>
@@ -680,6 +702,7 @@ function App() {
                 <strong>
                   Something went wrong
                 </strong>
+
                 <p>{error}</p>
               </div>
             </div>
@@ -710,7 +733,9 @@ function App() {
                 <p className="section-label">
                   ANALYZE
                 </p>
+
                 <h2>Video ready</h2>
+
                 <p>
                   Your video passed validation
                   and is ready for clip
@@ -722,7 +747,7 @@ function App() {
             <div className="video-summary">
               <div className="video-file">
                 <div className="video-file-icon">
-                  ▶
+                  ▶️
                 </div>
 
                 <div>
@@ -745,6 +770,7 @@ function App() {
             <div className="metadata-grid">
               <div className="metadata-item">
                 <span>Resolution</span>
+
                 <strong>
                   {video.metadata.width} ×{" "}
                   {video.metadata.height}
@@ -753,6 +779,7 @@ function App() {
 
               <div className="metadata-item">
                 <span>Duration</span>
+
                 <strong>
                   {formatDuration(
                     video.metadata.duration
@@ -762,6 +789,7 @@ function App() {
 
               <div className="metadata-item">
                 <span>Frame rate</span>
+
                 <strong>
                   {video.metadata.fps} FPS
                 </strong>
@@ -769,6 +797,7 @@ function App() {
 
               <div className="metadata-item">
                 <span>Codec</span>
+
                 <strong>
                   {video.metadata.codec.toUpperCase()}
                 </strong>
@@ -821,22 +850,22 @@ function App() {
                 </div>
 
                 <button
-  className="button button-primary export-all"
-  onClick={exportAll}
-  disabled={exportingAll}
->
-  {exportingAll ? (
-    <>
-      <span className="spinner" />
-      Generating & Exporting...
-    </>
-  ) : (
-    <>
-      <span>↓</span>
-      Export All ({clips.length})
-    </>
-  )}
-</button>
+                  className="button button-primary export-all"
+                  onClick={exportAll}
+                  disabled={exportingAll}
+                >
+                  {exportingAll ? (
+                    <>
+                      <span className="spinner" />
+                      Generating & Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <span>↓</span>
+                      Export All ({clips.length})
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
@@ -868,7 +897,9 @@ function App() {
                         className="vertical-preview"
                         controls
                         preload="metadata"
-                        src={`http://127.0.0.1:8000/api/preview/${clip.output_filename}`}
+                        src={apiUrl(
+                          `/api/preview/${clip.output_filename}`
+                        )}
                       >
                         Your browser does not
                         support video playback.
@@ -883,6 +914,7 @@ function App() {
                   <div className="timing-section">
                     <div className="timing-heading">
                       <span>Clip timing</span>
+
                       <span>
                         Adjust before export
                       </span>
@@ -956,9 +988,7 @@ function App() {
                       onClick={() =>
                         generateVertical(clip)
                       }
-                      disabled={
-                        clip.generating
-                      }
+                      disabled={clip.generating}
                     >
                       {clip.generating ? (
                         <>
@@ -990,6 +1020,7 @@ function App() {
                           <strong>
                             Vertical clip ready
                           </strong>
+
                           <span>
                             1080 × 1920 ·
                             Subject tracked
@@ -1026,7 +1057,8 @@ function App() {
           </div>
 
           <p>
-            Videos are processed locally.
+            Video processing powered by
+            ClipForge.
           </p>
         </footer>
       </main>
