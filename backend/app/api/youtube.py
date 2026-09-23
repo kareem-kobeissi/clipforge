@@ -1,4 +1,7 @@
+import base64
+import os
 import re
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -31,6 +34,35 @@ def is_valid_youtube_url(url: str) -> bool:
     return bool(pattern.search(url))
 
 
+def create_cookie_file():
+    cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64")
+
+    if not cookies_b64:
+        return None
+
+    try:
+        cookie_data = base64.b64decode(
+            cookies_b64
+        ).decode("utf-8")
+
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".txt",
+            delete=False,
+            encoding="utf-8",
+        )
+
+        temp_file.write(cookie_data)
+        temp_file.close()
+
+        return temp_file.name
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not load YouTube cookies."
+        ) from exc
+
+
 @router.post("/youtube")
 def download_youtube_video(payload: YouTubeRequest):
     url = payload.url.strip()
@@ -42,32 +74,47 @@ def download_youtube_video(payload: YouTubeRequest):
         )
 
     video_id = uuid.uuid4().hex
-
     output_template = str(
         UPLOAD_DIR / f"{video_id}.%(ext)s"
     )
 
-    ydl_options = {
-       "format": "bestvideo[height<=720]+bestaudio/best[height<=720]", 
-        "outtmpl": output_template,
-        "merge_output_format": "mp4",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
+    cookie_file = None
 
     try:
-        with yt_dlp.YoutubeDL(ydl_options) as ydl:
+        cookie_file = create_cookie_file()
+
+        ydl_options = {
+            "format": (
+                "bestvideo[height<=720]+bestaudio/"
+                "best[height<=720]"
+            ),
+            "outtmpl": output_template,
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+            "quiet": True,
+            "no_warnings": True,
+        }
+
+        if cookie_file:
+            ydl_options["cookiefile"] = cookie_file
+
+        with yt_dlp.YoutubeDL(
+            ydl_options
+        ) as ydl:
             info = ydl.extract_info(
                 url,
                 download=True,
             )
 
-        downloaded_file = UPLOAD_DIR / f"{video_id}.mp4"
+        downloaded_file = (
+            UPLOAD_DIR / f"{video_id}.mp4"
+        )
 
         if not downloaded_file.exists():
             candidates = list(
-                UPLOAD_DIR.glob(f"{video_id}.*")
+                UPLOAD_DIR.glob(
+                    f"{video_id}.*"
+                )
             )
 
             if not candidates:
@@ -82,16 +129,18 @@ def download_youtube_video(payload: YouTubeRequest):
         )
 
         if not metadata["is_horizontal"]:
-            downloaded_file.unlink(missing_ok=True)
-
+            downloaded_file.unlink(
+                missing_ok=True
+            )
             raise HTTPException(
                 status_code=400,
                 detail="YouTube video must be horizontal.",
             )
 
         if not metadata["is_roughly_16_9"]:
-            downloaded_file.unlink(missing_ok=True)
-
+            downloaded_file.unlink(
+                missing_ok=True
+            )
             raise HTTPException(
                 status_code=400,
                 detail="YouTube video must be approximately 16:9.",
@@ -112,10 +161,22 @@ def download_youtube_video(payload: YouTubeRequest):
         raise
 
     except Exception as exc:
-        for file in UPLOAD_DIR.glob(f"{video_id}.*"):
+        for file in UPLOAD_DIR.glob(
+            f"{video_id}.*"
+        ):
             file.unlink(missing_ok=True)
 
         raise HTTPException(
             status_code=500,
-            detail=f"Could not download YouTube video: {str(exc)}",
+            detail=(
+                "Could not download YouTube video: "
+                f"{str(exc)}"
+            ),
         )
+
+    finally:
+        if (
+            cookie_file
+            and os.path.exists(cookie_file)
+        ):
+            os.remove(cookie_file)
