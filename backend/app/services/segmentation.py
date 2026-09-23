@@ -3,7 +3,7 @@ from scenedetect.detectors import ContentDetector
 
 
 MIN_CLIP_DURATION = 8.0
-MAX_CLIP_DURATION = 60.0
+MAX_CLIP_DURATION = 45.0
 
 
 def _split_long_scene(
@@ -56,12 +56,22 @@ def _merge_short_clips(
             duration < MIN_CLIP_DURATION
             and merged
         ):
-            previous_start, _ = merged[-1]
+            previous_start, previous_end = merged[-1]
 
-            merged[-1] = (
-                previous_start,
-                end,
-            )
+            combined_duration = end - previous_start
+
+            if combined_duration <= MAX_CLIP_DURATION:
+                merged[-1] = (
+                    previous_start,
+                    end,
+                )
+            else:
+                merged.append(
+                    (
+                        start,
+                        end,
+                    )
+                )
         else:
             merged.append(
                 (
@@ -93,23 +103,39 @@ def detect_scenes(
         show_progress=True,
     )
 
-    scene_list = scene_manager.get_scene_list()
+    # Important:
+    # If no cuts are detected, treat the full video
+    # as one scene so it can still be split below.
+    scene_list = scene_manager.get_scene_list(
+        start_in_scene=True
+    )
 
     if not scene_list:
-        return []
+        duration = video.duration.get_seconds()
 
-    raw_scenes = []
+        if duration <= 0:
+            return []
 
-    for start, end in scene_list:
-        start_seconds = start.get_seconds()
-        end_seconds = end.get_seconds()
-
-        raw_scenes.append(
+        raw_scenes = [
             (
-                start_seconds,
-                end_seconds,
+                0.0,
+                duration,
             )
-        )
+        ]
+
+    else:
+        raw_scenes = []
+
+        for start, end in scene_list:
+            start_seconds = start.get_seconds()
+            end_seconds = end.get_seconds()
+
+            raw_scenes.append(
+                (
+                    start_seconds,
+                    end_seconds,
+                )
+            )
 
     normalized_scenes = []
 
@@ -121,10 +147,8 @@ def detect_scenes(
             )
         )
 
-    normalized_scenes = (
-        _merge_short_clips(
-            normalized_scenes
-        )
+    normalized_scenes = _merge_short_clips(
+        normalized_scenes
     )
 
     clips = []
