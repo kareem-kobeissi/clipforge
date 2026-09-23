@@ -1,9 +1,11 @@
+import base64
+import os
 import re
+import tempfile
 import uuid
 from pathlib import Path
 
 import yt_dlp
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -37,6 +39,35 @@ def is_valid_youtube_url(url: str) -> bool:
     return bool(pattern.search(url))
 
 
+def create_cookie_file():
+    cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64")
+
+    if not cookies_b64:
+        return None
+
+    try:
+        cookie_data = base64.b64decode(
+            cookies_b64
+        ).decode("utf-8")
+
+        temp_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            suffix=".txt",
+            delete=False,
+            encoding="utf-8",
+        )
+
+        temp_file.write(cookie_data)
+        temp_file.close()
+
+        return temp_file.name
+
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not load YouTube cookies."
+        ) from exc
+
+
 @router.post("/youtube")
 def download_youtube_video(
     payload: YouTubeRequest,
@@ -55,39 +86,50 @@ def download_youtube_video(
         UPLOAD_DIR / f"{video_id}.%(ext)s"
     )
 
-    ydl_options = {
-    "format": (
-        "bestvideo[height<=720]+bestaudio/"
-        "best[height<=720]"
-    ),
-    "outtmpl": output_template,
-    "merge_output_format": "mp4",
-    "noplaylist": True,
-
-    "js_runtimes": {
-        "node": {},
-    },
-
-    "extractor_args": {
-        "youtube": {
-            "player_client": [
-                "mweb",
-                "web_embedded",
-            ],
-        },
-        "youtubepot-bgutilhttp": {
-            "base_url": [
-                "http://127.0.0.1:4416"
-            ],
-        },
-    },
-
-    "verbose": True,
-    "quiet": False,
-    "no_warnings": False,
-}
+    cookie_file = None
 
     try:
+        cookie_file = create_cookie_file()
+
+        ydl_options = {
+            "format": (
+                "bestvideo[height<=720]+bestaudio/"
+                "best[height<=720]"
+            ),
+            "outtmpl": output_template,
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+
+            # Node.js handles YouTube JS challenges
+            "js_runtimes": {
+                "node": {},
+            },
+
+            # Use current PO-token provider
+            "extractor_args": {
+                "youtube": {
+                    "player_client": [
+                        "mweb",
+                        "web_embedded",
+                    ],
+                },
+                "youtubepot-bgutilhttp": {
+                    "base_url": [
+                        "http://127.0.0.1:4416"
+                    ],
+                },
+            },
+
+            # Keep these enabled while testing
+            "verbose": True,
+            "quiet": False,
+            "no_warnings": False,
+        }
+
+        # Use Railway YouTube cookies when available
+        if cookie_file:
+            ydl_options["cookiefile"] = cookie_file
+
         with yt_dlp.YoutubeDL(
             ydl_options
         ) as ydl:
@@ -126,8 +168,7 @@ def download_youtube_video(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "YouTube video must "
-                    "be horizontal."
+                    "YouTube video must be horizontal."
                 ),
             )
 
@@ -139,28 +180,20 @@ def download_youtube_video(
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "YouTube video must be "
-                    "approximately 16:9."
+                    "YouTube video must be approximately 16:9."
                 ),
             )
 
         return {
             "success": True,
             "message": (
-                "YouTube video downloaded "
-                "successfully."
+                "YouTube video downloaded successfully."
             ),
             "video_id": video_id,
-            "stored_filename": (
-                downloaded_file.name
-            ),
+            "stored_filename": downloaded_file.name,
             "title": info.get("title"),
-            "duration": info.get(
-                "duration"
-            ),
-            "webpage_url": info.get(
-                "webpage_url"
-            ),
+            "duration": info.get("duration"),
+            "webpage_url": info.get("webpage_url"),
             "metadata": metadata,
         }
 
@@ -178,8 +211,14 @@ def download_youtube_video(
         raise HTTPException(
             status_code=500,
             detail=(
-                "Could not download "
-                "YouTube video: "
+                "Could not download YouTube video: "
                 f"{str(exc)}"
             ),
         )
+
+    finally:
+        if (
+            cookie_file
+            and os.path.exists(cookie_file)
+        ):
+            os.remove(cookie_file)
