@@ -210,52 +210,39 @@ def create_dynamic_vertical_clip(
 
     # Add audio from the original video and encode final H.264 MP4.
     command = [
-        "ffmpeg",
-        "-y",
-
-        "-i",
-        str(temp_video),
-
-        "-ss",
-        str(start),
-
-        "-i",
-        input_path,
-
-        "-t",
-        str(duration),
-
-        "-map",
-        "0:v:0",
-
-        "-map",
-        "1:a?",
-
-        "-c:v",
-        "libx264",
-
-        "-preset",
-        "medium",
-
-        "-crf",
-        "21",
-
-        "-c:a",
-        "aac",
-
-        "-b:a",
-        "128k",
-
-        "-pix_fmt",
-        "yuv420p",
-
-        "-movflags",
-        "+faststart",
-
-        "-shortest",
-
-        str(output),
-    ]
+    "ffmpeg",
+    "-y",
+    "-i",
+    str(temp_video),
+    "-ss",
+    str(start),
+    "-i",
+    input_path,
+    "-t",
+    str(duration),
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a?",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-threads",
+    "2",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-pix_fmt",
+    "yuv420p",
+    "-movflags",
+    "+faststart",
+    "-shortest",
+    str(output),
+]
 
     subprocess.run(
         command,
