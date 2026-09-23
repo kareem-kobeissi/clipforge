@@ -84,21 +84,17 @@ def download_youtube_video(payload: YouTubeRequest):
         cookie_file = create_cookie_file()
 
         ydl_options = {
-            "format": (
-                "bestvideo[height<=720]+bestaudio/"
-                "best[height<=720]"
-            ),
-            "outtmpl": output_template,
-            "merge_output_format": "mp4",
-            "noplaylist": True,
-            "quiet": True,
-            "no_warnings": True,
-            "extractor_args": {
-    "youtube": {
-        "player_client": ["default", "web_embedded"]
-    }
-},
-        }
+    "format": (
+        "bestvideo[height<=720]+bestaudio/"
+        "best[height<=720]"
+    ),
+    "outtmpl": output_template,
+    "merge_output_format": "mp4",
+    "noplaylist": True,
+    "quiet": True,
+    "no_warnings": True,
+}
+
 
         if cookie_file:
             ydl_options["cookiefile"] = cookie_file
