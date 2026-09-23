@@ -93,6 +93,11 @@ def download_youtube_video(payload: YouTubeRequest):
             "noplaylist": True,
             "quiet": True,
             "no_warnings": True,
+            "extractor_args": {
+    "youtube": {
+        "player_client": ["default", "web_embedded"]
+    }
+},
         }
 
         if cookie_file:
