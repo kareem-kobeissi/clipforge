@@ -56,31 +56,36 @@ def download_youtube_video(
     )
 
     ydl_options = {
-        "format": (
-            "bestvideo[height<=720]+bestaudio/"
-            "best[height<=720]"
-        ),
-        "outtmpl": output_template,
-        "merge_output_format": "mp4",
-        "noplaylist": True,
+    "format": (
+        "bestvideo[height<=720]+bestaudio/"
+        "best[height<=720]"
+    ),
+    "outtmpl": output_template,
+    "merge_output_format": "mp4",
+    "noplaylist": True,
 
-        # Enable Node 22 for YouTube JS challenges
-        "js_runtimes": {
-            "node": {},
+    "js_runtimes": {
+        "node": {},
+    },
+
+    "extractor_args": {
+        "youtube": {
+            "player_client": [
+                "mweb",
+                "web_embedded",
+            ],
         },
-
-        # Current recommended PO-token client
-        "extractor_args": {
-            "youtube": {
-                "player_client": [
-                    "mweb",
-                ],
-            },
+        "youtubepot-bgutilhttp": {
+            "base_url": [
+                "http://127.0.0.1:4416"
+            ],
         },
+    },
 
-        "quiet": True,
-        "no_warnings": True,
-    }
+    "verbose": True,
+    "quiet": False,
+    "no_warnings": False,
+}
 
     try:
         with yt_dlp.YoutubeDL(
