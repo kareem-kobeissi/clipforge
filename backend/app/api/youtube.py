@@ -92,39 +92,38 @@ def download_youtube_video(
         cookie_file = create_cookie_file()
 
         ydl_options = {
-            "format": (
-                "bestvideo[height<=720]+bestaudio/"
-                "best[height<=720]"
-            ),
-            "outtmpl": output_template,
-            "merge_output_format": "mp4",
-            "noplaylist": True,
+    "format": (
+        "bestvideo[vcodec^=avc1][height<=720]"
+        "+bestaudio[ext=m4a]/"
+        "best[vcodec^=avc1][height<=720]"
+    ),
 
-            # Node.js handles YouTube JS challenges
-            "js_runtimes": {
-                "node": {},
-            },
+    "outtmpl": output_template,
+    "merge_output_format": "mp4",
+    "noplaylist": True,
 
-            # Use current PO-token provider
-            "extractor_args": {
-                "youtube": {
-                    "player_client": [
-                        "mweb",
-                        "web_embedded",
-                    ],
-                },
-                "youtubepot-bgutilhttp": {
-                    "base_url": [
-                        "http://127.0.0.1:4416"
-                    ],
-                },
-            },
+    "js_runtimes": {
+        "node": {},
+    },
 
-            # Keep these enabled while testing
-            "verbose": True,
-            "quiet": False,
-            "no_warnings": False,
-        }
+    "extractor_args": {
+        "youtube": {
+            "player_client": [
+                "mweb",
+                "web_embedded",
+            ],
+        },
+        "youtubepot-bgutilhttp": {
+            "base_url": [
+                "http://127.0.0.1:4416"
+            ],
+        },
+    },
+
+    "verbose": True,
+    "quiet": False,
+    "no_warnings": False,
+}
 
         # Use Railway YouTube cookies when available
         if cookie_file:
